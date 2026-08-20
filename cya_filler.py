@@ -168,7 +168,13 @@ def fill_packing_list(template_path, output_path, oc_data,
         for col in range(1, 7):
             ws.cell(row=fila, column=col).value = None
 
-    # --- Bloque "Solid Pack" C (filas 36-37): distribución agregada por talla ---
+    # --- Bloque "Solid Pack" (filas 36-37): distribución agregada por talla ---
+    # La letra de este bloque es la que la OC realmente le puso al pack tipo SKU
+    # (puede ser "B" si solo hay un Ratio Pack antes, "C" si hay dos, etc.) --
+    # no siempre es "C". Si la OC no trae ningún desglose de Pack (Escenario 1),
+    # se usa "C" por default ya que no hay letra real de la OC que tomar.
+    solid_letra = solid_packs[0]['letra'] if solid_packs else 'C'
+
     # "planeado" = lo que la OC asignó a este pack tipo SKU para esa talla (fijo,
     #   es la referencia -- va en la columna F "Pieces per PO").
     # "a_entregar" = lo que realmente se va a mandar (editable vía
@@ -188,8 +194,10 @@ def fill_packing_list(template_path, output_path, oc_data,
         for talla, planeado in planeado_talla.items()
     }
 
-    _limpiar_fila(ws, 36)
+    _limpiar_fila(ws, 36, col_ini=3, col_fin=15)  # OJO: no tocar columna B (36), trae la fórmula del color
+    ws.cell(row=36, column=1).value = None
     _limpiar_fila(ws, 37)
+    ws.cell(row=36, column=1, value=solid_letra)  # A36: letra del pack (según la OC)
     for col, talla in enumerate(sku_order, start=3):
         ws.cell(row=36, column=col, value=talla)
         if talla in a_entregar_talla:
@@ -218,7 +226,7 @@ def fill_packing_list(template_path, output_path, oc_data,
                 )
                 break
             ws.cell(row=fila, column=1, value=sku_no)              # A: SKU No.
-            ws.cell(row=fila, column=2, value='C')                 # B: PACK ('C' por convención)
+            ws.cell(row=fila, column=2, value=solid_letra)         # B: PACK (letra real de la OC)
             ws.cell(row=fila, column=3, value=num_cajas)           # C: Number of cartons
             ws.cell(row=fila, column=4, value=pieces_por_caja)     # D: Pieces per carton
             ws.cell(row=fila, column=5, value=cantidad_a_entregar) # E: Pieces to Delivery
