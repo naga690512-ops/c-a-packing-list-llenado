@@ -50,16 +50,17 @@ if pdf_file:
     st.caption("Esto NO viene en la OC — captúralo según lo que realmente quepa en tu caja para este estilo.")
 
     capacidad_ratio = {}
+    oc_num = header.get("numero_orden", "sinOC")
     for p in ratio_packs:
         letra = p["letra"]
         capacidad_ratio[letra] = st.number_input(
             f"Packs por caja — Pack {letra} (unidades/pack: {p['unidades_por_pack']}, total packs: {p['total_packs']})",
-            min_value=0, value=0, step=1, key=f"cap_{letra}"
+            min_value=0, value=0, step=1, key=f"cap_{oc_num}_{letra}"
         ) or None
 
     capacidad_solid = st.number_input(
         "Piezas por caja — Solid Pack / remanente (mismo valor para todas las tallas)",
-        min_value=0, value=0, step=1
+        min_value=0, value=0, step=1, key=f"cap_solid_{oc_num}"
     ) or None
 
     # Cantidad real a entregar por talla en el Solid Pack (remanente).
@@ -79,7 +80,8 @@ if pdf_file:
         for i, (talla, planeado) in enumerate(planeado_solid.items()):
             with cols[i]:
                 cantidades_reales_solid[talla] = st.number_input(
-                    f"{talla} (OC: {planeado})", min_value=0, value=planeado, step=1, key=f"real_{talla}"
+                    f"{talla} (OC: {planeado})", min_value=0, value=planeado, step=1,
+                    key=f"real_{oc_num}_{talla}"
                 )
 
     with st.expander("Campos que no vienen en la OC (opcional)"):
