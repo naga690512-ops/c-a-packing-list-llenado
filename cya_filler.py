@@ -106,20 +106,25 @@ def fill_packing_list(template_path, output_path, oc_data,
     ws.cell(row=18, column=2, value=header.get('color_generico'))  # B18
 
     # --- Bloques "Ratio Pack" (A: filas 18-19, B: filas 23-24) ---
+    # Las tallas (fila 18 y 23) SIEMPRE se escriben con el catálogo de tallas
+    # de la OC (sku_order) -- igual que en Pack C -- exista o no un Ratio Pack
+    # real en esta OC. Si no hay Ratio Pack para esa letra, la fila de
+    # cantidades (19/24) simplemente se queda en blanco.
     ratio_rows = {'A': (18, 19), 'B': (23, 24)}
+    ratio_por_letra = {p['letra']: p for p in ratio_packs[:2]}
+    for letra, (row_label, row_qty) in ratio_rows.items():
+        _limpiar_fila(ws, row_label)
+        _limpiar_fila(ws, row_qty)
+        for col, talla in enumerate(sku_order, start=3):
+            ws.cell(row=row_label, column=col, value=talla)
+
     for pack in ratio_packs[:2]:  # el template solo soporta A y B
         letra = pack['letra']
         if letra not in ratio_rows:
             warnings.append(f"Pack '{letra}' no tiene bloque Ratio Pack disponible en el template (solo A y B).")
             continue
-        row_label, row_qty = ratio_rows[letra]
-        _limpiar_fila(ws, row_label)
-        _limpiar_fila(ws, row_qty)
-        # tallas -> columnas C.. : SIEMPRE se usan las mismas columnas/tallas
-        # que trae el estilo (sku_order), igual que el Pack A. Si este pack en
-        # particular no maneja esa talla, la columna de cantidad queda en blanco.
+        _, row_qty = ratio_rows[letra]
         for col, talla in enumerate(sku_order, start=3):
-            ws.cell(row=row_label, column=col, value=talla)
             if talla in pack['tallas']:
                 cantidad_total = pack['tallas'][talla]
                 total_packs = pack['total_packs']
