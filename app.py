@@ -83,7 +83,7 @@ if pdf_file:
                 )
 
     with st.expander("Campos que no vienen en la OC (opcional)"):
-        shipper_code = st.text_input("Shipper Code")
+        shipper_code = st.text_input("Shipper Code", value="70135")
         invoice_number = st.text_input("Invoice Number")
         gross_weight = st.number_input("Gross Weight per Order", min_value=0.0, value=0.0) or None
         net_weight = st.number_input("Net Weight per Order", min_value=0.0, value=0.0) or None

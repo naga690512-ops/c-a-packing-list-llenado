@@ -49,7 +49,7 @@ def _limpiar_fila(ws, fila, col_ini=3, col_fin=15):
 def fill_packing_list(template_path, output_path, oc_data,
                        capacidad_ratio=None, capacidad_solid=None,
                        cantidades_reales_solid=None,
-                       shipper_code=None, shipper_name_override=None,
+                       shipper_code='70135', shipper_name_override=None,
                        gross_weight=None, net_weight=None, cbm=None,
                        invoice_number=None):
     """
