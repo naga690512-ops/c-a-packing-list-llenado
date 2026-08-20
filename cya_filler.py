@@ -99,6 +99,12 @@ def fill_packing_list(template_path, output_path, oc_data,
 
     warnings = []
 
+    # El color SIEMPRE se escribe en B18 (Pack A), sin importar si esta OC trae
+    # Ratio Packs o no -- B23 y B36 lo heredan por fórmula (=+B18, =+B23), así
+    # que si no se escribe aquí, se queda pegado el color de ejemplo del template.
+    _limpiar_fila(ws, 18, col_ini=2, col_fin=2)
+    ws.cell(row=18, column=2, value=header.get('color_generico'))  # B18
+
     # --- Bloques "Ratio Pack" (A: filas 18-19, B: filas 23-24) ---
     ratio_rows = {'A': (18, 19), 'B': (23, 24)}
     for pack in ratio_packs[:2]:  # el template solo soporta A y B
@@ -109,8 +115,6 @@ def fill_packing_list(template_path, output_path, oc_data,
         row_label, row_qty = ratio_rows[letra]
         _limpiar_fila(ws, row_label)
         _limpiar_fila(ws, row_qty)
-        if letra == 'A':
-            ws.cell(row=row_label, column=2, value=header.get('color_generico'))  # B18
         # tallas -> columnas C.. : SIEMPRE se usan las mismas columnas/tallas
         # que trae el estilo (sku_order), igual que el Pack A. Si este pack en
         # particular no maneja esa talla, la columna de cantidad queda en blanco.
