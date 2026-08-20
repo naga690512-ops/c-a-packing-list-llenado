@@ -62,6 +62,26 @@ if pdf_file:
         min_value=0, value=0, step=1
     ) or None
 
+    # Cantidad real a entregar por talla en el Solid Pack (remanente).
+    # Precargada con lo planeado en la OC; ajústala si hay faltante de fabricación.
+    if solid_packs:
+        planeado_solid = {}
+        for p in solid_packs:
+            for talla, cant in p["tallas"].items():
+                planeado_solid[talla] = planeado_solid.get(talla, 0) + cant
+    else:
+        planeado_solid = {t: sku_table[t]["piezas"] for t in sku_order}
+
+    cantidades_reales_solid = {}
+    if planeado_solid:
+        st.caption("Cantidad real a entregar del Solid Pack — ajusta si hubo faltante de fabricación (por defecto, lo planeado en la OC).")
+        cols = st.columns(len(planeado_solid))
+        for i, (talla, planeado) in enumerate(planeado_solid.items()):
+            with cols[i]:
+                cantidades_reales_solid[talla] = st.number_input(
+                    f"{talla} (OC: {planeado})", min_value=0, value=planeado, step=1, key=f"real_{talla}"
+                )
+
     with st.expander("Campos que no vienen en la OC (opcional)"):
         shipper_code = st.text_input("Shipper Code")
         invoice_number = st.text_input("Invoice Number")
@@ -75,6 +95,7 @@ if pdf_file:
             TEMPLATE_PATH, out_path, data,
             capacidad_ratio=capacidad_ratio or None,
             capacidad_solid=capacidad_solid,
+            cantidades_reales_solid=cantidades_reales_solid or None,
             shipper_code=shipper_code or None,
             invoice_number=invoice_number or None,
             gross_weight=gross_weight, net_weight=net_weight, cbm=cbm,

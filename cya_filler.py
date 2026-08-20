@@ -32,8 +32,18 @@ def _split_por_capacidad(total, capacidad):
     return filas
 
 
+def _limpiar_fila(ws, fila, col_ini=3, col_fin=15):
+    """Borra cualquier valor residual del template (ej. tallas '11-12' de un
+    ejemplo previo) en el rango de columnas de tallas, antes de escribir los
+    valores reales de esta OC. Evita que sobrevivan celdas viejas cuando la
+    OC trae menos tallas que las que el template tenía de ejemplo."""
+    for col in range(col_ini, col_fin + 1):
+        ws.cell(row=fila, column=col, value=None)
+
+
 def fill_packing_list(template_path, output_path, oc_data,
                        capacidad_ratio=None, capacidad_solid=None,
+                       cantidades_reales_solid=None,
                        shipper_code=None, shipper_name_override=None,
                        gross_weight=None, net_weight=None, cbm=None,
                        invoice_number=None):
@@ -44,6 +54,13 @@ def fill_packing_list(template_path, output_path, oc_data,
     capacidad_ratio: dict {'A': packs_por_caja, 'B': packs_por_caja} (opcional)
     capacidad_solid: int (piezas por caja, un solo valor para todas las tallas)
                       o dict {talla: piezas_por_caja} si varía por talla
+    cantidades_reales_solid: dict opcional {talla: piezas_reales_a_entregar}
+      para el bloque Solid Pack (remanente). Úsalo cuando por faltantes de
+      fabricación la cantidad real disponible es menor a lo planeado en la OC.
+      Si no se pasa, se usa la cantidad de la OC tal cual (sin faltante).
+      OJO: "Pieces per PO" (columna F) SIEMPRE queda con el valor original
+      de la OC para ese SKU dentro de este pack -- nunca se toca, es la
+      referencia de lo planeado, aunque E (Pieces to Delivery) cambie.
     shipper_code, gross_weight, net_weight, cbm, invoice_number: campos que
       NO vienen en la OC -- captúralos tú; si no se pasan, quedan en blanco
       para que los llenes a mano en el Excel resultante.
@@ -85,6 +102,8 @@ def fill_packing_list(template_path, output_path, oc_data,
             warnings.append(f"Pack '{letra}' no tiene bloque Ratio Pack disponible en el template (solo A y B).")
             continue
         row_label, row_qty = ratio_rows[letra]
+        _limpiar_fila(ws, row_label)
+        _limpiar_fila(ws, row_qty)
         if letra == 'A':
             ws.cell(row=row_label, column=2, value=header.get('color_generico'))  # B18
         # tallas -> columnas C..
@@ -127,30 +146,42 @@ def fill_packing_list(template_path, output_path, oc_data,
             # G ya trae la fórmula =C*D*E
 
     # --- Bloque "Solid Pack" C (filas 36-37): distribución agregada por talla ---
+    # "planeado" = lo que la OC asignó a este pack tipo SKU para esa talla (fijo,
+    #   es la referencia -- va en la columna F "Pieces per PO").
+    # "a_entregar" = lo que realmente se va a mandar (editable vía
+    #   cantidades_reales_solid, por defecto igual a lo planeado si no hay faltante).
     # Si no hay packs tipo SKU en la OC (Escenario 1), se usa la tabla SKU completa como "solid".
     if solid_packs:
-        agregado_talla = {}
+        planeado_talla = {}
         for p in solid_packs:
             for talla, cant in p['tallas'].items():
-                agregado_talla[talla] = agregado_talla.get(talla, 0) + cant
+                planeado_talla[talla] = planeado_talla.get(talla, 0) + cant
     else:
-        agregado_talla = {t: sku_table[t]['piezas'] for t in sku_order}
+        planeado_talla = {t: sku_table[t]['piezas'] for t in sku_order}
 
+    cantidades_reales_solid = cantidades_reales_solid or {}
+    a_entregar_talla = {
+        talla: cantidades_reales_solid.get(talla, planeado)
+        for talla, planeado in planeado_talla.items()
+    }
+
+    _limpiar_fila(ws, 36)
+    _limpiar_fila(ws, 37)
     col = 3
     for talla in sku_order:
-        if talla in agregado_talla:
+        if talla in a_entregar_talla:
             ws.cell(row=36, column=col, value=talla)
-            ws.cell(row=37, column=col, value=agregado_talla[talla])
+            ws.cell(row=37, column=col, value=a_entregar_talla[talla])  # cantidad REAL a entregar
             col += 1
 
     # --- Tabla SKU (Solid Pack), filas 40 en adelante ---
     fila = 40
     max_fila_sku = 55  # filas 56-58 son "MIXED", no aplican a entregas nacionales
     for talla in sku_order:
-        if talla not in agregado_talla:
+        if talla not in a_entregar_talla:
             continue
-        cantidad_a_entregar = agregado_talla[talla]
-        piezas_po = sku_table[talla]['piezas']
+        cantidad_a_entregar = a_entregar_talla[talla]   # E: Pieces to Delivery (real)
+        piezas_po = planeado_talla[talla]                # F: Pieces per PO (lo planeado en la OC para ESTE pack, fijo)
         sku_no = sku_table[talla]['sku']
 
         cap = capacidad_solid
