@@ -36,9 +36,14 @@ def _limpiar_fila(ws, fila, col_ini=3, col_fin=15):
     """Borra cualquier valor residual del template (ej. tallas '11-12' de un
     ejemplo previo) en el rango de columnas de tallas, antes de escribir los
     valores reales de esta OC. Evita que sobrevivan celdas viejas cuando la
-    OC trae menos tallas que las que el template tenía de ejemplo."""
+    OC trae menos tallas que las que el template tenía de ejemplo.
+
+    OJO: ws.cell(row=r, column=c, value=None) NO limpia nada -- openpyxl
+    ignora value=None y deja la celda intacta. Hay que asignar .value
+    directamente sobre el objeto celda.
+    """
     for col in range(col_ini, col_fin + 1):
-        ws.cell(row=fila, column=col, value=None)
+        ws.cell(row=fila, column=col).value = None
 
 
 def fill_packing_list(template_path, output_path, oc_data,
@@ -106,11 +111,12 @@ def fill_packing_list(template_path, output_path, oc_data,
         _limpiar_fila(ws, row_qty)
         if letra == 'A':
             ws.cell(row=row_label, column=2, value=header.get('color_generico'))  # B18
-        # tallas -> columnas C..
-        col = 3
-        for talla in sku_order:
+        # tallas -> columnas C.. : SIEMPRE se usan las mismas columnas/tallas
+        # que trae el estilo (sku_order), igual que el Pack A. Si este pack en
+        # particular no maneja esa talla, la columna de cantidad queda en blanco.
+        for col, talla in enumerate(sku_order, start=3):
+            ws.cell(row=row_label, column=col, value=talla)
             if talla in pack['tallas']:
-                ws.cell(row=row_label, column=col, value=talla)
                 cantidad_total = pack['tallas'][talla]
                 total_packs = pack['total_packs']
                 ratio = cantidad_total / total_packs if total_packs else 0
@@ -120,30 +126,38 @@ def fill_packing_list(template_path, output_path, oc_data,
                         f"no da un entero exacto ({ratio}). Verifica el prepack."
                     )
                 ws.cell(row=row_qty, column=col, value=round(ratio))
-                col += 1
 
-    # --- Tabla "PACK No." (filas 27-30) ---
-    pack_no_rows = {'A': [27, 28], 'B': [29, 30]}
+    # --- Tabla "PACK No." (filas 27-30): renglones CONTIGUOS, sin huecos.
+    # Cada pack usa 1 renglón (si cabe en una sola caja) o 2 (caja llena + caja
+    # resto) -- pero el siguiente pack empieza inmediatamente después, nunca
+    # se deja un renglón vacío reservado.
+    fila_pack_no = 27
+    max_fila_pack_no = 30
     for pack in ratio_packs[:2]:
         letra = pack['letra']
-        filas_disp = pack_no_rows.get(letra)
-        if not filas_disp:
-            continue
         cap = (capacidad_ratio or {}).get(letra)
         splits = _split_por_capacidad(pack['total_packs'], cap)
-        if len(splits) > len(filas_disp):
-            warnings.append(
-                f"Pack {letra}: la capacidad dada requiere más de {len(filas_disp)} tipos de caja; "
-                f"solo se llenaron las primeras {len(filas_disp)}. Ajusta manualmente."
-            )
-        for (packs_por_caja, num_cajas), fila in zip(splits, filas_disp):
-            ws.cell(row=fila, column=1, value=pack['pack_id'])          # A: PACK No.
-            # B ya trae 'A'/'B' precargado en el template
-            ws.cell(row=fila, column=3, value=num_cajas)                # C: Number of cartons
-            ws.cell(row=fila, column=4, value=packs_por_caja)           # D: Packs per carton
-            ws.cell(row=fila, column=5, value=pack['unidades_por_pack'])  # E: Pieces Per Pack
-            ws.cell(row=fila, column=6, value=pack['total_packs'])      # F: Packs per PO
+        for packs_por_caja, num_cajas in splits:
+            if fila_pack_no > max_fila_pack_no:
+                warnings.append(
+                    "Se agotaron los renglones disponibles en la tabla PACK No. (27-30); "
+                    "faltó capturar alguna caja resto manualmente."
+                )
+                break
+            ws.cell(row=fila_pack_no, column=1, value=pack['pack_id'])        # A: PACK No.
+            ws.cell(row=fila_pack_no, column=2, value=letra)                  # B: PACK
+            ws.cell(row=fila_pack_no, column=3, value=num_cajas)              # C: Number of cartons
+            ws.cell(row=fila_pack_no, column=4, value=packs_por_caja)         # D: Packs per carton
+            ws.cell(row=fila_pack_no, column=5, value=pack['unidades_por_pack'])  # E: Pieces Per Pack
+            ws.cell(row=fila_pack_no, column=6, value=pack['total_packs'])    # F: Packs per PO
             # G ya trae la fórmula =C*D*E
+            fila_pack_no += 1
+
+    # Limpia cualquier renglón sobrante que el template haya dejado precargado
+    # (ej. la letra 'B' de un pack que ya no llegó a usar ese renglón).
+    for fila in range(fila_pack_no, max_fila_pack_no + 1):
+        for col in range(1, 7):
+            ws.cell(row=fila, column=col).value = None
 
     # --- Bloque "Solid Pack" C (filas 36-37): distribución agregada por talla ---
     # "planeado" = lo que la OC asignó a este pack tipo SKU para esa talla (fijo,
@@ -167,12 +181,10 @@ def fill_packing_list(template_path, output_path, oc_data,
 
     _limpiar_fila(ws, 36)
     _limpiar_fila(ws, 37)
-    col = 3
-    for talla in sku_order:
+    for col, talla in enumerate(sku_order, start=3):
+        ws.cell(row=36, column=col, value=talla)
         if talla in a_entregar_talla:
-            ws.cell(row=36, column=col, value=talla)
             ws.cell(row=37, column=col, value=a_entregar_talla[talla])  # cantidad REAL a entregar
-            col += 1
 
     # --- Tabla SKU (Solid Pack), filas 40 en adelante ---
     fila = 40
@@ -204,6 +216,12 @@ def fill_packing_list(template_path, output_path, oc_data,
             ws.cell(row=fila, column=6, value=piezas_po)           # F: Pieces per PO
             # G ya trae la fórmula =C*D
             fila += 1
+
+    # Limpia el 'C' precargado del template en renglones 40-44 que no se usaron
+    # (por ejemplo si el remanente cupo en menos renglones de los reservados).
+    for fila_sobrante in range(fila, 45):
+        for col in range(1, 7):
+            ws.cell(row=fila_sobrante, column=col).value = None
 
     wb.save(output_path)
     return warnings
